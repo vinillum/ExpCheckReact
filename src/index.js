@@ -1,17 +1,47 @@
-import React from 'react';
-import ReactDOM from 'react-dom';
-import './index.css';
-import App from './App';
-import reportWebVitals from './reportWebVitals';
+import React from "react";
+import ReactDOM from "react-dom";
+import SearchBox from "./SearchBox";
+import SearchHeaders from "./SearchHeaders";
+import search from "./search";
+import storage from "./storage";
 
-ReactDOM.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-  document.getElementById('root')
-);
+class App extends React.Component {
+  state = { headers: [], username: "", fetching: false };
 
-// If you want to start measuring performance in your app, pass a function
-// to log results (for example: reportWebVitals(console.log))
-// or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
-reportWebVitals();
+  callback = (data) => {
+    storage.updateHistory(this.state.username, data);
+    this.retrieveData(this.state.username);
+    this.setState({ fetching: false });
+  };
+
+  retrieveData = (username) => {
+    this.setState({ headers: storage.getHistory(username), username });
+  };
+
+  fetchNewData = () => {
+    this.setState({ fetching: true });
+    search.search(this.state.username, this.callback);
+  };
+
+  render() {
+    return (
+      <div className="ui container">
+        <SearchBox onSubmit={this.retrieveData} />
+        {this.state.username ? (
+          <h3
+            className="ui block header"
+            onClick={this.state.fetching ? null : this.fetchNewData}
+          >
+            Fetch updates
+          </h3>
+        ) : null}
+        <SearchHeaders
+          results={this.state.headers}
+          username={this.state.username}
+        />
+      </div>
+    );
+  }
+}
+
+ReactDOM.render(<App />, document.querySelector("#root"));
