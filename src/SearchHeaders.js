@@ -4,16 +4,18 @@ import storage from "./storage";
 import search from "./search";
 
 class SearchHeaders extends React.Component {
-  state = { fetched: "", metadata: [], fetching: false };
+  state = { fetched: "", metadata: [], fetching: "" };
 
   fetchHistorical = async (date) => {
-    this.setState({ fetching: true });
+    if (date === this.state.fetched) return;
+    if (this.state.fetching) return;
+    this.setState({ fetching: date });
     let ids = storage.getHistoryIds(this.props.username, date);
     let results = await search.searchExpansions(
       ids,
       search.filterNewExpansions
     );
-    this.setState({ fetching: false, metadata: results, fetched: date });
+    this.setState({ fetching: "", metadata: results, fetched: date });
   };
 
   render() {
@@ -24,7 +26,7 @@ class SearchHeaders extends React.Component {
             className="ui block header"
             onClick={() => this.fetchHistorical(result)}
           >
-            {result}
+            {this.state.fetching === result ? "Fetching" : result}
           </h3>
           {this.state.fetched === result ? (
             <SearchResults results={this.state.metadata} />

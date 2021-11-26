@@ -6,20 +6,39 @@ import search from "./search";
 import storage from "./storage";
 
 class App extends React.Component {
-  state = { headers: [], username: "", fetching: false };
+  state = {
+    headers: [],
+    username: "",
+    fetching: false,
+    fetchMessage: "Fetch updates...",
+    fetchColor: "green",
+  };
 
-  callback = (data) => {
-    storage.updateHistory(this.state.username, data);
-    this.retrieveData(this.state.username);
-    this.setState({ fetching: false });
+  callback = (data, success) => {
+    if (success) {
+      storage.updateHistory(this.state.username, data);
+      this.retrieveData(this.state.username);
+    }
+    this.setState({
+      fetching: false,
+      fetchMessage: success
+        ? "Expansions updated. Fetch again..."
+        : "Failed to fetch updates. Try again...",
+      fetchColor: success ? "green" : "red",
+    });
   };
 
   retrieveData = (username) => {
-    this.setState({ headers: storage.getHistory(username), username });
+    this.setState({
+      headers: storage.getHistory(username),
+      username,
+      fetchMessage: "Fetch updates...",
+      fetchColor: "green",
+    });
   };
 
   fetchNewData = () => {
-    this.setState({ fetching: true });
+    this.setState({ fetching: true, fetchMessage: "Fetching new data" });
     search.search(this.state.username, this.callback);
   };
 
@@ -30,9 +49,10 @@ class App extends React.Component {
         {this.state.username ? (
           <h3
             className="ui block header"
+            style={{ backgroundColor: this.state.fetchColor }}
             onClick={this.state.fetching ? null : this.fetchNewData}
           >
-            Fetch updates
+            {this.state.fetchMessage}
           </h3>
         ) : null}
         <SearchHeaders

@@ -9,7 +9,11 @@ function getHistory(username) {
     return [];
   }
 
-  return Object.keys(db.get(username).value()).sort((a, b) => b - a);
+  return Object.keys(db.get(username).value()).sort((a, b) => {
+    var dateA = Date(a);
+    var dateB = Date(b);
+    return dateB > dateA ? 1 : -1;
+  });
 }
 
 function updateHistory(username, ids) {

@@ -33,8 +33,10 @@ function filterNewExpansions(xmlDoc) {
         var name = link.getAttribute("value");
       }
     }
+    var thumbnail =
+      "https://cf.geekdo-images.com/zxVVmggfpHJpmnJY9j-k1w__small/img/Tse35rOD2Z8Pv9EOUj4TfeMuNew=/fit-in/200x150/filters:strip_icc()/pic1657689.jpg";
     for (let link of item.getElementsByTagName("thumbnail")) {
-      var thumbnail = link.textContent;
+      thumbnail = link.textContent;
     }
     expansions.push({
       name,
@@ -111,13 +113,14 @@ function cleanupResults(owned, results) {
   return uniq(result);
 }
 
-function search(username, callback) {
+function search(username, callback, attempts = 5) {
   axios
     .get(`https://www.boardgamegeek.com/xmlapi/collection/${username}`)
     .then(async (resp) => {
-      if (resp.status === 202)
-        setTimeout(() => search(username, callback), 10000);
-      else if (resp.status !== 200) callback([]);
+      if (attempts === 0) callback([], false);
+      else if (resp.status === 202)
+        setTimeout(() => search(username, callback, --attempts), 10000);
+      else if (resp.status !== 200) callback([], false);
       else {
         const parser = new DOMParser();
         const xmlDoc = parser.parseFromString(resp.data, "text/xml");
@@ -125,11 +128,12 @@ function search(username, callback) {
         seen = storage.appendSeen(username, seen);
         let expansions = await searchExpansions(owned, filterExpansions);
         let results = cleanupResults(seen, expansions);
-        callback(results);
+        callback(results, true);
       }
     })
     .catch(() => {
-      setTimeout(() => search(username, callback), 10000);
+      if (attempts === 0) callback([], false);
+      else setTimeout(() => search(username, callback, --attempts), 10000);
     });
 }
 
