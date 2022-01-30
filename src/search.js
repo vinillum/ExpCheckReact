@@ -67,7 +67,7 @@ async function getExpansions(searchList, filterFunction) {
   while (status === 202) {
     try {
       let resp = await axios.get(
-        `https://www.boardgamegeek.com/xmlapi2/thing?id=${searchList.join(",")}`
+        `https://boardgamegeek.com/xmlapi2/thing?id=${searchList.join(",")}`
       );
       status = resp.status;
       if (status === 200) {
@@ -115,7 +115,7 @@ function cleanupResults(owned, results) {
 
 function search(username, callback, attempts = 5) {
   axios
-    .get(`https://www.boardgamegeek.com/xmlapi/collection/${username}`)
+    .get(`https://boardgamegeek.com/xmlapi/collection/${username}`)
     .then(async (resp) => {
       if (attempts === 0) callback([], false);
       else if (resp.status === 202)
