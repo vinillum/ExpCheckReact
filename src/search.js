@@ -85,7 +85,7 @@ async function searchExpansions(owned, filterFunction) {
   let searchList = [];
   for (let own of owned) {
     searchList.push(own);
-    if (searchList.length === 50) {
+    if (searchList.length === 20) {
       expansions = expansions.concat(
         await getExpansions(searchList, filterFunction)
       );
@@ -113,7 +113,7 @@ function cleanupResults(owned, results) {
   return uniq(result);
 }
 
-function search(username, callback, attempts = 5) {
+function search(username, callback, attempts = 10) {
   axios
     .get(`https://boardgamegeek.com/xmlapi/collection/${username}`)
     .then(async (resp) => {
