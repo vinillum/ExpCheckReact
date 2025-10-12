@@ -1,15 +1,14 @@
-const low = require("lowdb");
-const LocalStorage = require("lowdb/adapters/LocalStorage");
+const { LocalStoragePreset } = require("lowdb/browser");
 
-const adapter = new LocalStorage();
-const db = low(adapter);
+function getDb(username) {
+  const db = LocalStoragePreset(username, {});
+  db.read();
+  return db;
+}
 
 function getHistory(username) {
-  if (!db.has(username).value()) {
-    return [];
-  }
-
-  return Object.keys(db.get(username).value()).sort((a, b) => {
+  const db = getDb(username);
+  return Object.keys(db.data).sort((a, b) => {
     var dateA = Date(a);
     var dateB = Date(b);
     return dateB > dateA ? 1 : -1;
@@ -17,22 +16,22 @@ function getHistory(username) {
 }
 
 function updateHistory(username, ids) {
-  let state = db.has(username).value() ? db.get(username).value() : {};
-  state[new Date()] = ids;
-  db.set(username, state).write();
+  const db = getDb(username);
+  db.update(() => {
+    db.data[new Date()] = ids;
+  })
 }
 
 function getHistoryIds(username, date) {
-  return db.get(username).value()[date];
+  const db = getDb(username);
+  return db.data[date];
 }
 
 function appendSeen(username, seen) {
-  let result = seen;
-  if (!db.has(username).value()) {
-    return result;
-  }
+  const db = getDb(username);
 
-  let known = db.get(username).value();
+  let result = seen;
+  let known = db.data;
 
   for (let key of Object.keys(known)) {
     result = result.concat(known[key]);
