@@ -61,13 +61,18 @@ function filterExpansions(xmlDoc) {
   return expansions;
 }
 
-async function getExpansions(searchList, filterFunction) {
+async function getExpansions(searchList, token, filterFunction) {
   let expansions = [];
   let status = 202;
   while (status === 202) {
     try {
       let resp = await axios.get(
-        `https://boardgamegeek.com/xmlapi2/thing?id=${searchList.join(",")}`
+        `https://boardgamegeek.com/xmlapi2/thing?id=${searchList.join(",")}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
       );
       status = resp.status;
       if (status === 200) {
@@ -80,21 +85,21 @@ async function getExpansions(searchList, filterFunction) {
   return expansions;
 }
 
-async function searchExpansions(owned, filterFunction) {
+async function searchExpansions(owned, token, filterFunction) {
   let expansions = [];
   let searchList = [];
   for (let own of owned) {
     searchList.push(own);
     if (searchList.length === 20) {
       expansions = expansions.concat(
-        await getExpansions(searchList, filterFunction)
+        await getExpansions(searchList, token, filterFunction)
       );
       searchList = [];
     }
   }
   if (searchList.length !== 0) {
     expansions = expansions.concat(
-      await getExpansions(searchList, filterFunction)
+      await getExpansions(searchList, token, filterFunction)
     );
   }
   return expansions;
@@ -113,27 +118,33 @@ function cleanupResults(owned, results) {
   return uniq(result);
 }
 
-function search(username, callback, attempts = 10) {
+function search(username, token, callback, attempts = 10) {
   axios
-    .get(`https://boardgamegeek.com/xmlapi/collection/${username}`)
+    .get(`https://boardgamegeek.com/xmlapi/collection/${username}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    )
     .then(async (resp) => {
       if (attempts === 0) callback([], false);
       else if (resp.status === 202)
-        setTimeout(() => search(username, callback, --attempts), 10000);
+        setTimeout(() => search(username, token, callback, --attempts), 10000);
       else if (resp.status !== 200) callback([], false);
       else {
         const parser = new DOMParser();
         const xmlDoc = parser.parseFromString(resp.data, "text/xml");
         let { owned, seen } = filterOwned(xmlDoc);
         seen = storage.appendSeen(username, seen);
-        let expansions = await searchExpansions(owned, filterExpansions);
+        let expansions = await searchExpansions(owned, token, filterExpansions);
         let results = cleanupResults(seen, expansions);
         callback(results, true);
       }
     })
     .catch(() => {
       if (attempts === 0) callback([], false);
-      else setTimeout(() => search(username, callback, --attempts), 10000);
+      else setTimeout(() => search(username, token, callback, --attempts), 10000);
     });
 }
 
