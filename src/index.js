@@ -31,7 +31,6 @@ class App extends React.Component {
   };
 
   retrieveData = (username, token) => {
-    console.log(`retrieveData ${username}, ${token}`);
     if (username && token) {
       this.setState({
         headers: storage.getHistory(username),
@@ -48,14 +47,12 @@ class App extends React.Component {
   };
 
   setUser = (username) => {
-    console.log("setUser", username);
     this.setState({ username }, () => {
       this.retrieveData(username, this.state.token);
     });
   };
 
   setToken = (token) => {
-    console.log("setToken", token);
     this.setState({ token }, () => {
       this.retrieveData(this.state.username, token);
     });

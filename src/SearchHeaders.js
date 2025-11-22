@@ -7,7 +7,6 @@ class SearchHeaders extends React.Component {
   state = { fetched: "", metadata: [], fetching: "" };
 
   fetchHistorical = async (date) => {
-    console.log(`fetchHistorical ${date}`);
     if (date === this.state.fetched) return;
     if (this.state.fetching) return;
     this.setState({ fetching: date });
