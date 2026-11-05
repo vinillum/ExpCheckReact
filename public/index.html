@@ -2,6 +2,25 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <!--
+      Content Security Policy. A meta tag, because this is a static page with no
+      server of its own to send a header. It lists what the page really loads:
+        scripts  only its own bundle
+        styles   Semantic UI from cdnjs, which imports the Lato font CSS from
+                 fonts.googleapis.com; the font files come from fonts.gstatic.com
+                 and cdnjs
+        images   expansion covers from cf.geekdo-images.com; data: URIs for the
+                 images and the icon fonts that Semantic UI embeds in its CSS
+                 (found by a test: without data: for fonts the console fills with
+                 violations)
+        network  the BoardGameGeek API only
+      There is no 'unsafe-inline': React sets styles through the CSSOM, which a
+      CSP allows. If the page ever loads something new, add its host here, or the
+      browser will block it. (frame-ancestors cannot be set from a meta tag.)
+    -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src https://cdnjs.cloudflare.com https://fonts.gstatic.com data:; img-src 'self' https://cf.geekdo-images.com data:; connect-src 'self' https://boardgamegeek.com; object-src 'none'; base-uri 'self'; form-action 'self'" />
+    <!-- Do not tell BoardGameGeek, the CDNs or the image host which page a request came from. -->
+    <meta name="referrer" content="no-referrer" />
     <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#000000" />
@@ -9,7 +28,19 @@
       name="description"
       content="BGG Expansion Check"
     />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/semantic.min.css" />
+    <!--
+      Pinned to 2.4.1 and checked against its hash: if the file served by the CDN
+      ever differs, the browser refuses to apply it. The hash is the one cdnjs
+      publishes for this file (api.cdnjs.com/libraries/semantic-ui/2.4.1?fields=sri)
+      and matches the file downloaded on 2026-11-05. The stylesheet itself imports
+      the Lato font CSS from Google Fonts, which an integrity hash cannot cover.
+    -->
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/semantic.min.css"
+      integrity="sha512-8bHTC73gkZ7rZ7vpqUQThUDhqcNFyYi2xgDgPDHc+GXVGHXq+xPjynxIopALmOPqzo9JZj0k6OqqewdGO3EsrQ=="
+      crossorigin="anonymous"
+    />
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
     <!--
       manifest.json provides metadata used when your web app is installed on a
