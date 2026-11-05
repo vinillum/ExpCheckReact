@@ -1,4 +1,4 @@
-const { LocalStoragePreset } = require("lowdb/browser");
+import { LocalStoragePreset } from "lowdb/browser";
 
 // localStorage keys the app itself uses (see SearchBox and ApiBox). A history
 // must never be stored under one of them.

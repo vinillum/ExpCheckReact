@@ -58,6 +58,36 @@ function isTransient(error) {
   return !status || status === 429 || status >= 500;
 }
 
+// Progress and retry notes are only a display. Whatever such a callback does, it
+// must not fail or restart the lookup it reports on.
+function notify(callback, ...args) {
+  if (!callback) return;
+  try {
+    callback(...args);
+  } catch (e) {
+    // ignored on purpose
+  }
+}
+
+// What the user is told while a failed request waits to be asked again: why it
+// failed, and how many of the retries this is, e.g. "no response from
+// BoardGameGeek, retrying (1 of 4)".
+function retryNote(error, attempt) {
+  const status = error.response && error.response.status;
+  const why = !status
+    ? "no response from BoardGameGeek"
+    : status === 429
+    ? "BoardGameGeek is limiting requests"
+    : `BoardGameGeek error ${status}`;
+  return `${why}, retrying (${attempt} of ${ERROR_RETRIES})`;
+}
+
+// What the user is told while BGG, which answered 202, gets the data ready: the
+// collection export can take a minute or more, and is asked for again every 10 s.
+function preparingNote(attempt, max) {
+  return `BoardGameGeek is preparing the data, checking again (${attempt} of ${max})`;
+}
+
 // An error whose message is meant to be shown to the user as it is.
 function userFacingError(message) {
   const error = new Error(message);
@@ -93,10 +123,15 @@ function parseXml(text) {
 // Resolves with the parsed XML document of a 200 response. Rejects when the
 // request cannot succeed, the retry budget is used up, or the body is an error
 // or not BGG data (see parseXml). A 200 is always honoured, including the one
-// that arrives on the very last attempt.
-async function fetchXml(url, token, { queuedRetries, queuedDelay }) {
+// that arrives on the very last attempt. `onRetry`, if given, is called with a
+// note when the same request is about to be asked again, either because it failed
+// (see retryNote) or because BGG answered 202, "still preparing" (see
+// preparingNote), and with null once a request gets its real answer. A note that
+// follows another one replaces it without a null in between.
+async function fetchXml(url, token, { queuedRetries, queuedDelay, onRetry }) {
   let queuedAttempts = 0;
   let errorAttempts = 0;
+  let noted = false;
   for (;;) {
     await waitForTurn();
     let resp;
@@ -105,11 +140,36 @@ async function fetchXml(url, token, { queuedRetries, queuedDelay }) {
         headers: { Authorization: `Bearer ${token}` },
       });
     } catch (e) {
-      if (!isTransient(e) || errorAttempts >= ERROR_RETRIES) throw e;
+      if (!isTransient(e) || errorAttempts >= ERROR_RETRIES) {
+        // No response at all: the browser is offline, or it blocked the request
+        // (a failed CORS preflight looks the same). The retries above took about
+        // 30 s; say what happened instead of leaving the user with a generic text.
+        if (!e.response) throw userFacingError("Could not reach BoardGameGeek");
+        // A wrong, expired or revoked token: nothing will change until the user
+        // enters a different one, so say so (BGG answers 401 at once, no retries).
+        if (e.response.status === 401) {
+          throw userFacingError("BoardGameGeek did not accept the API token");
+        }
+        // Still limiting or failing after every retry: not the user's doing, and
+        // trying again a little later is the right thing to do.
+        if (e.response.status === 429) {
+          throw userFacingError("BoardGameGeek is still limiting requests");
+        }
+        if (e.response.status >= 500) {
+          throw userFacingError(`BoardGameGeek is still returning error ${e.response.status}`);
+        }
+        throw e;
+      }
       const backoff = ERROR_BASE_DELAY_MS * 2 ** errorAttempts;
       errorAttempts++;
+      notify(onRetry, retryNote(e, errorAttempts));
+      noted = true;
       await sleep(backoff);
       continue;
+    }
+    if (noted && resp.status !== 202) {
+      notify(onRetry, null);
+      noted = false;
     }
 
     if (resp.status === 200) {
@@ -119,9 +179,12 @@ async function fetchXml(url, token, { queuedRetries, queuedDelay }) {
       throw new Error(`Unexpected response status ${resp.status}`);
     }
     if (queuedAttempts >= queuedRetries) {
-      throw new Error("BoardGameGeek is still preparing the data");
+      // Worth showing: the user can simply try again a little later.
+      throw userFacingError("BoardGameGeek is still preparing the data");
     }
     queuedAttempts++;
+    notify(onRetry, preparingNote(queuedAttempts, queuedRetries));
+    noted = true;
     await sleep(queuedDelay);
   }
 }
@@ -183,13 +246,18 @@ function readDetails(item) {
 
 // Looks up `ids`, 20 per request, and returns a Map of id -> read(item). Nothing
 // is kept between calls: every lookup asks BGG, so new expansions and links show
-// up as soon as BGG has them. Rejects if any batch fails. `onBatch`, if given,
-// receives the values of each batch as soon as it arrives, so the caller can keep
-// what was loaded even if a later batch fails.
-async function lookupItems(ids, token, read, onBatch) {
+// up as soon as BGG has them. Rejects if any batch fails. Optional callbacks:
+// - onBatch(values): the values of each batch as soon as it arrives, so the caller
+//   can keep what was loaded even if a later batch fails.
+// - onProgress(batch, total): just before each batch is requested: (1, 14),
+//   (2, 14), ...
+// - onRetry(note): see fetchXml.
+async function lookupItems(ids, token, read, { onBatch, onProgress, onRetry } = {}) {
   const unique = [...new Set(ids)];
+  const total = Math.ceil(unique.length / BATCH_SIZE);
   const found = new Map();
   for (let start = 0; start < unique.length; start += BATCH_SIZE) {
+    notify(onProgress, start / BATCH_SIZE + 1, total);
     const batch = unique.slice(start, start + BATCH_SIZE);
     // `_` is a throwaway parameter that BGG ignores. BGG marks `thing` responses
     // as cacheable for an hour (Cache-Control: max-age=3600) and browsers honour
@@ -201,7 +269,7 @@ async function lookupItems(ids, token, read, onBatch) {
     const xmlDoc = await fetchXml(
       `https://boardgamegeek.com/xmlapi2/thing?id=${batch.join(",")}&_=${Date.now()}`,
       token,
-      { queuedRetries: 5, queuedDelay: 2000 }
+      { queuedRetries: 5, queuedDelay: 2000, onRetry }
     );
     const values = [];
     for (let item of xmlDoc.getElementsByTagName("item")) {
@@ -215,15 +283,16 @@ async function lookupItems(ids, token, read, onBatch) {
 }
 
 // Everything the given games link to as an expansion (may contain duplicates).
-async function findExpansionIds(owned, token) {
-  const found = await lookupItems(owned, token, readExpansionLinks);
+async function findExpansionIds(owned, token, callbacks) {
+  const found = await lookupItems(owned, token, readExpansionLinks, callbacks);
   return [...found.values()].flat();
 }
 
 // Name, id and thumbnail for each id, in the order given. `onBatch` receives each
 // batch of details as it arrives (the history view keeps them for good).
-async function getExpansionDetails(ids, token, onBatch) {
-  const found = await lookupItems(ids, token, readDetails, onBatch);
+// `onProgress` and `onRetry` are described at lookupItems.
+async function getExpansionDetails(ids, token, onBatch, onProgress, onRetry) {
+  const found = await lookupItems(ids, token, readDetails, { onBatch, onProgress, onRetry });
   return [...new Set(ids)].map((id) => found.get(id)).filter(Boolean);
 }
 
@@ -240,8 +309,11 @@ function cleanupResults(known, results) {
 // showing to the user (unknown username, empty collection, bad response).
 // The callback runs outside the try block on purpose: an error thrown by the
 // callback must not be mistaken for a failed lookup (which used to restart the
-// whole search).
-async function search(username, token, callback) {
+// whole search). `onProgress`, if given, is called as (batch, total) while the
+// owned games are looked up (see lookupItems); not while the collection loads.
+// `onRetry`, if given, hears about retries of every request, the collection's
+// included (see fetchXml).
+async function search(username, token, callback, onProgress, onRetry) {
   let results;
   try {
     const xmlDoc = await fetchXml(
@@ -249,7 +321,7 @@ async function search(username, token, callback) {
       token,
       // The collection endpoint answers 202 while it builds the export;
       // 10 polls, 10 seconds apart.
-      { queuedRetries: 10, queuedDelay: 10000 }
+      { queuedRetries: 10, queuedDelay: 10000, onRetry }
     );
     if (xmlDoc.getElementsByTagName("item").length === 0) {
       // Nothing to look up. Recording this as a successful, empty check would
@@ -258,7 +330,7 @@ async function search(username, token, callback) {
     }
     let { owned, seen } = filterOwned(xmlDoc);
     seen = storage.appendSeen(username, seen);
-    let expansions = await findExpansionIds(owned, token);
+    let expansions = await findExpansionIds(owned, token, { onProgress, onRetry });
     results = cleanupResults(seen, expansions);
   } catch (e) {
     callback([], false, e.userFacing ? e.message : undefined);

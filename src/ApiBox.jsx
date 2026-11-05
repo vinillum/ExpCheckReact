@@ -37,7 +37,7 @@ class ApiBox extends React.Component {
           <div className="field">
             <label>API Token (optional: needed to fetch updates and to load new items)</label>
             <input
-              type="password"
+              type="text"
               autoComplete="off"
               spellCheck={false}
               value={this.state.token}

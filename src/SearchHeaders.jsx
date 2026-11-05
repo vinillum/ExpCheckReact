@@ -1,11 +1,25 @@
 import React from "react";
 import SearchResults from "./SearchResults";
+import Spinner from "./Spinner";
 import storage from "./storage";
 import search from "./search";
 
 class SearchHeaders extends React.Component {
   // unloaded: how many items of the open entry are neither stored nor loadable
-  state = { fetched: "", metadata: [], unloaded: 0, fetching: "", failed: "" };
+  // progress: { batch, total } while an entry is being loaded from BGG
+  // failedReason: why the last load failed, if it is worth showing
+  // retry: why a failed request is being asked again, while it waits ("" = none).
+  //   Only shown while the entry is loading, and reset when a load starts.
+  state = {
+    fetched: "",
+    metadata: [],
+    unloaded: 0,
+    fetching: "",
+    failed: "",
+    failedReason: "",
+    progress: null,
+    retry: "",
+  };
 
   componentDidUpdate(prevProps) {
     // The token was entered while an entry with unloaded items is open: load
@@ -46,6 +60,8 @@ class SearchHeaders extends React.Component {
       this.setState({
         fetching: "",
         failed: "",
+        failedReason: "",
+        progress: null,
         fetched: date,
         metadata,
         unloaded: ids.length - metadata.length,
@@ -56,25 +72,45 @@ class SearchHeaders extends React.Component {
       show([]); // nothing to ask BGG for, or nothing to ask with
       return;
     }
-    this.setState({ fetching: date, failed: "" });
+    this.setState({
+      fetching: date,
+      failed: "",
+      failedReason: "",
+      progress: null,
+      retry: "",
+    });
     try {
       show(
         await search.getExpansionDetails(
           missing,
           this.props.token,
-          storage.saveDetails
+          storage.saveDetails,
+          (batch, total) => this.setState({ progress: { batch, total } }),
+          (note) => this.setState({ retry: note || "" })
         )
       );
     } catch (e) {
       // Release the lock, otherwise no entry could ever be opened again.
-      this.setState({ fetching: "", failed: date });
+      this.setState({
+        fetching: "",
+        failed: date,
+        failedReason: e.userFacing ? e.message : "",
+        progress: null,
+      });
     }
   };
 
   label(result) {
-    if (this.state.fetching === result) return "Fetching";
-    if (this.state.failed === result) {
-      return `${result} - failed to load, click to retry`;
+    const { fetching, failed, failedReason, progress, retry } = this.state;
+    if (fetching === result) {
+      const text = progress
+        ? `Fetching (batch ${progress.batch} of ${progress.total})`
+        : "Fetching";
+      return retry ? `${text} - ${retry}` : text;
+    }
+    if (failed === result) {
+      const why = failedReason ? ` (${failedReason})` : "";
+      return `${result} - failed to load${why}, click to retry`;
     }
     return result;
   }
@@ -87,6 +123,7 @@ class SearchHeaders extends React.Component {
             className="ui block header"
             onClick={() => this.fetchHistorical(result)}
           >
+            {this.state.fetching === result ? <Spinner /> : null}
             {this.label(result)}
           </h3>
           {this.state.fetched === result ? (

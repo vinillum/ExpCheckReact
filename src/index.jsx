@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import SearchBox from "./SearchBox";
 import ApiBox from "./ApiBox";
 import SearchHeaders from "./SearchHeaders";
+import Spinner from "./Spinner";
 import search from "./search";
 import storage from "./storage";
 
@@ -14,6 +15,9 @@ class App extends React.Component {
     fetching: false,
     fetchMessage: "Fetch updates...",
     fetchColor: "green",
+    // why a failed request is being asked again, while it waits ("" = none). Only
+    // shown while fetching, and reset when a fetch starts.
+    fetchRetry: "",
   };
 
   // `username` is the account the fetch was started for, which is not
@@ -82,6 +86,17 @@ class App extends React.Component {
     });
   };
 
+  // `username` is the account the fetch was started for, as in callback.
+  showProgress = (username, batch, total) => {
+    this.setState({
+      fetchMessage: `Fetching new data for ${username} (batch ${batch} of ${total})`,
+    });
+  };
+
+  showRetry = (note) => {
+    this.setState({ fetchRetry: note || "" });
+  };
+
   fetchNewData = () => {
     // Capture now: the user may edit the fields while the fetch is running.
     const { username, token } = this.state;
@@ -91,9 +106,14 @@ class App extends React.Component {
     this.setState({
       fetching: true,
       fetchMessage: `Fetching new data for ${username}`,
+      fetchRetry: "",
     });
-    search.search(username, token, (data, success, reason) =>
-      this.callback(username, data, success, reason)
+    search.search(
+      username,
+      token,
+      (data, success, reason) => this.callback(username, data, success, reason),
+      (batch, total) => this.showProgress(username, batch, total),
+      this.showRetry
     );
   };
 
@@ -103,6 +123,9 @@ class App extends React.Component {
     // and inert, and says what is missing; the local history still works.
     const canFetch = Boolean(username && token);
     let label = this.state.fetchMessage;
+    if (fetching && this.state.fetchRetry) {
+      label = `${label} - ${this.state.fetchRetry}`;
+    }
     if (!canFetch && !fetching) {
       label = !username
         ? "Enter a username to fetch updates"
@@ -123,6 +146,8 @@ class App extends React.Component {
           }
           onClick={canFetch && !fetching ? this.fetchNewData : undefined}
         >
+          {/* the button is grey, not green or red, if the token was cleared mid-fetch */}
+          {fetching ? <Spinner inverted={canFetch} /> : null}
           {label}
         </h3>
         <SearchHeaders
